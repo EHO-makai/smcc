@@ -1,0 +1,17 @@
+id: QUESTION-001
+type: Question
+schema_version: 1
+version: 1
+status: accepted
+title: Should validate flag in_progress/review tasks with non-accepted dependencies?
+statement: >-
+  smcc validate checks stored ready/blocked status against the dependency
+  DAG (RESULT-002), but tasks in in_progress or review with non-accepted
+  dependencies are not flagged. Decide whether that state is legal
+  (e.g. deliberate speculative work ahead of a dependency) or a validation
+  error. Raised in RESULT-002 unresolved_questions; promoted to a Question
+  during PR review of TASK-002.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: agent/fable5
+supersedes: []

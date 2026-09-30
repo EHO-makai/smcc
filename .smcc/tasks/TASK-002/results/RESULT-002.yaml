@@ -1,0 +1,53 @@
+id: RESULT-002
+type: Result
+schema_version: 1
+version: 1
+task_id: TASK-002
+created_at: "2026-09-30"
+source: agent/fable5
+summary: >-
+  Implemented smcc validate: a lenient snapshot validator that collects every
+  DEC-012 invariant violation with an individually reportable issue code, plus
+  the smcc CLI entry point whose exit code distinguishes valid from invalid
+  state. The bootstrap fixture validates clean; 51 tests pass.
+work_performed:
+  - Implemented src/smcc/validate.py - validate(smcc_dir) returns a ValidationReport of Issue records, each with one of eight codes (schema, location, duplicate-id, dangling-ref, dependency-cycle, status-dependency, accepted-result, provenance).
+  - Lenient loading - every file that fails YAML parsing or schema validation produces a schema issue and validation continues, unlike Store.load_all which stops at the first bad file.
+  - Reference checks - supersedes, task_dependencies, context_refs, constraints, Result.task_id, project goal_refs (must resolve to a Goal), and Proposal targets (update/supersede must resolve; a proposed create must not collide with an existing id).
+  - Cycle detection - three-color DFS over task_dependencies; each cycle reported with its full path; dangling dependencies are excluded from the graph (reported separately).
+  - Status-drift rule (resolves RESULT-001 unresolved question) - stored 'ready' requires every resolvable dependency accepted; stored 'blocked' requires at least one non-accepted dependency; drift is an error, not a warning.
+  - Provenance structure - accepted_result must resolve to a Result whose task_id matches, and Result files must live under tasks/<their own task_id>/results/.
+  - Implemented src/smcc/cli.py - argparse CLI with smcc validate subcommand, --smcc-dir override, upward .smcc discovery from cwd, exit codes 0 (valid) / 1 (invalid) / 2 (usage or no sidecar found); registered as a console script in pyproject.toml.
+files_changed:
+  - pyproject.toml
+  - src/smcc/__init__.py
+  - src/smcc/cli.py
+  - src/smcc/validate.py
+  - tests/test_validate.py
+  - .smcc/tasks/TASK-002/task.yaml
+tests_run:
+  - python -m pytest -q (venv .venv, Python 3.13.14)
+  - smcc validate (installed console script against this repository's live sidecar)
+test_results:
+  - 51 passed in 3.43s; every seeded defect class detected (duplicate ID, dangling reference in four ref kinds, dependency cycle, invalid status, ready/blocked drift both directions, unresolvable accepted_result, misfiled Result, wrong object kind for directory, unparseable YAML, missing sidecar).
+  - smcc validate on the live .smcc exits 0 and reports valid.
+findings:
+  - The status-drift check is snapshot-establishable and cheap, so stored ready/blocked plus mechanical drift detection beats deriving status at read time; the stored value stays the single authoritative truth per DEC-001 and validate catches divergence.
+  - Lenient loading required a parallel loader rather than reusing Store.load_all; the store's fail-fast contract is right for programmatic use, and the validator's collect-all contract is right for diagnostics - both share the same file-walk and parse primitives.
+  - Result not extending the common SMCCObject base (no supersedes field) surfaced as the only implementation stumble; reference checking must treat Results structurally, which is consistent with their immutability.
+unresolved_questions:
+  - Should validate also flag in_progress/review tasks whose dependencies are not accepted? Currently only ready/blocked drift is checked, per the narrow RESULT-001 question.
+  - Proposal payload contents are unvalidated (payload is a free-form dict); checking payload shape against the target type may belong to proposal-acceptance code rather than snapshot validation.
+proposals: []
+follow_up_tasks: []
+context_source: manual
+context_content_hash: null
+git:
+  base_commit: 694970df270d75307d03d89f2e5ab15e3a07a319
+  resulting_commit: null
+  changed_files:
+    - pyproject.toml
+    - src/smcc/**
+    - tests/**
+    - .smcc/tasks/TASK-002/**
+  diff_reference: null
