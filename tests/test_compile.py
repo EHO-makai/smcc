@@ -8,7 +8,13 @@ import yaml
 
 from smcc import Store
 from smcc.cli import EXIT_INVALID, EXIT_VALID, main
-from smcc.compile import COMPILER_VERSION, CompileError, compile_context, write_context
+from smcc.compile import (
+    COMPILER_VERSION,
+    CompileError,
+    check_task_contexts,
+    compile_context,
+    write_context,
+)
 
 
 @pytest.fixture()
@@ -184,3 +190,89 @@ class TestCLI:
     def test_compile_unknown_task_fails(self, fixture_copy: Path, capsys):
         assert main(["compile", "TASK-999", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
         assert "task not found" in capsys.readouterr().err
+
+
+def _check(smcc_dir: Path, task_id: str = "TASK-004"):
+    return check_task_contexts(smcc_dir, Store(smcc_dir).load_all(), task_id)
+
+
+class TestStaleness:
+    def test_fresh_against_unchanged_inputs(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert report.fresh
+        assert report.stale_inputs == ()
+
+    def test_bumped_state_version_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        _edit(fixture_copy / "state" / "decisions" / "DEC-005.yaml", version=2)
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert not report.fresh
+        assert ("state", "DEC-005", "v1", "v2") in [
+            (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
+        ]
+
+    def test_changed_dependency_result_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        # dependency re-accepted with a different result than the one recorded
+        _edit(
+            fixture_copy / "tasks" / "TASK-003" / "task.yaml",
+            version=8,
+            accepted_result="RESULT-005",
+        )
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        stale = {(s.kind, s.id): (s.recorded, s.current) for s in report.stale_inputs}
+        assert stale[("dependency", "TASK-003")] == ("RESULT-003", "RESULT-005")
+        # the task version drift of TASK-003 is a dependency concern, not TASK-004's own
+        assert ("task", "TASK-004") not in stale
+
+    def test_missing_input_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        (fixture_copy / "state" / "decisions" / "DEC-004.yaml").unlink()
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert ("state", "DEC-004", "v1", "missing") in [
+            (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
+        ]
+
+    def test_own_task_version_drift_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        # seed a version guaranteed to differ from whatever the living fixture holds
+        _edit(fixture_copy / "tasks" / "TASK-004" / "task.yaml", version=context.task_version + 1)
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert ("task", "TASK-004") in {(s.kind, s.id) for s in report.stale_inputs}
+
+    def test_live_task_003_context_is_stale_from_con_003_amendment(self, smcc_dir: Path):
+        # real dogfood case: the committed TASK-003 context recorded CON-003 v2,
+        # amended to v3 during PR #3 review; task version also moved v5 -> v7
+        reports = check_task_contexts(smcc_dir, Store(smcc_dir).load_all(), "TASK-003")
+        assert reports
+        stale_ids = {s.id for r in reports for s in r.stale_inputs}
+        assert "CON-003" in stale_ids
+
+
+class TestStaleCLI:
+    def test_fresh_context_exits_zero(self, fixture_copy: Path, capsys):
+        write_context(fixture_copy, _compile(fixture_copy, task_id="TASK-004"))
+        assert main(["stale", "TASK-004", "--smcc-dir", str(fixture_copy)]) == EXIT_VALID
+        assert ": fresh" in capsys.readouterr().out
+
+    def test_all_stale_exits_one_and_names_inputs(self, fixture_copy: Path, capsys):
+        write_context(fixture_copy, _compile(fixture_copy, task_id="TASK-004"))
+        _edit(fixture_copy / "state" / "decisions" / "DEC-005.yaml", version=2)
+        assert main(["stale", "TASK-004", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
+        out = capsys.readouterr().out
+        assert ": stale" in out
+        assert "DEC-005: recorded v1, current v2" in out
+
+    def test_no_compiled_contexts_exits_one(self, fixture_copy: Path, capsys):
+        assert main(["stale", "TASK-001", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
+        assert "no compiled contexts" in capsys.readouterr().err

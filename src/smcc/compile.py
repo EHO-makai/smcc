@@ -233,3 +233,107 @@ def write_context(smcc_dir: Path | str, context: CompiledContext) -> Path:
     except FileExistsError:
         pass
     return path
+
+
+# ---- staleness (DEC-005, ARCHITECTURE §12.1) ----
+
+
+@dataclass(frozen=True)
+class StaleInput:
+    """One recorded input that no longer matches authoritative state."""
+
+    # task: the task's own version drifted; state: a state_refs entry drifted;
+    # dependency: a dependency's accepted_result no longer names the recorded Result
+    kind: str  # "task" | "state" | "dependency"
+    id: str
+    recorded: str
+    current: str
+
+    def render(self) -> str:
+        return f"{self.id}: recorded {self.recorded}, current {self.current}"
+
+
+@dataclass(frozen=True)
+class StalenessReport:
+    """Staleness of one compiled context against the current snapshot."""
+
+    task_id: str
+    content_hash: str
+    stale_inputs: tuple[StaleInput, ...]
+    path: Path | None = None
+
+    @property
+    def fresh(self) -> bool:
+        return not self.stale_inputs
+
+
+def check_context(snapshot: Snapshot, document: str, path: Path | None = None) -> StalenessReport:
+    """Check one compiled context document's recorded inputs against the snapshot.
+
+    A context is stale when any recorded input version or accepted dependency
+    result no longer matches the currently authoritative input (DEC-005); every
+    changed input is reported individually so the cause is identifiable.
+    """
+    parts = document.split("---\n", 2)
+    if len(parts) != 3 or parts[0].strip():
+        raise CompileError(f"{path or '<document>'}: missing provenance frontmatter")
+    try:
+        frontmatter = yaml.safe_load(parts[1])
+    except yaml.YAMLError as exc:
+        raise CompileError(f"{path or '<document>'}: invalid frontmatter YAML: {exc}") from exc
+    if not isinstance(frontmatter, dict):
+        raise CompileError(f"{path or '<document>'}: frontmatter is not a mapping")
+    try:
+        task_id = frontmatter["task_id"]
+        task_version = frontmatter["task_version"]
+        state_refs = frontmatter["state_refs"]
+        dependency_results = frontmatter["dependency_results"]
+        content_hash = frontmatter["content_hash"]
+    except KeyError as exc:
+        raise CompileError(f"{path or '<document>'}: frontmatter missing field {exc}") from exc
+
+    objects = snapshot.by_id()
+    stale: list[StaleInput] = []
+
+    task = objects.get(task_id)
+    if not isinstance(task, Task):
+        stale.append(StaleInput("task", task_id, f"v{task_version}", "missing"))
+    elif task.version != task_version:
+        stale.append(StaleInput("task", task_id, f"v{task_version}", f"v{task.version}"))
+
+    for ref in state_refs:
+        obj = objects.get(ref["id"])
+        if obj is None or not isinstance(obj, StateObject):
+            stale.append(StaleInput("state", ref["id"], f"v{ref['version']}", "missing"))
+        elif obj.version != ref["version"]:
+            stale.append(StaleInput("state", ref["id"], f"v{ref['version']}", f"v{obj.version}"))
+
+    for dep_ref in dependency_results:
+        dep = objects.get(dep_ref["task_id"])
+        recorded = dep_ref["result_id"]
+        if not isinstance(dep, Task):
+            stale.append(StaleInput("dependency", dep_ref["task_id"], recorded, "missing"))
+        elif dep.accepted_result != recorded:
+            stale.append(
+                StaleInput("dependency", dep_ref["task_id"], recorded, dep.accepted_result or "none")
+            )
+
+    return StalenessReport(
+        task_id=task_id,
+        content_hash=content_hash,
+        stale_inputs=tuple(stale),
+        path=path,
+    )
+
+
+def check_task_contexts(
+    smcc_dir: Path | str, snapshot: Snapshot, task_id: str
+) -> list[StalenessReport]:
+    """Check every compiled context stored for a task, in stable path order."""
+    contexts_dir = Path(smcc_dir) / "contexts" / task_id
+    reports: list[StalenessReport] = []
+    if contexts_dir.is_dir():
+        for context_path in sorted(contexts_dir.glob("*.md")):
+            document = context_path.read_text(encoding="utf-8")
+            reports.append(check_context(snapshot, document, path=context_path))
+    return reports
