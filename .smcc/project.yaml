@@ -1,0 +1,10 @@
+# SMCC project sidecar configuration (non-versioned config, not an authoritative state object)
+schema_version: 1
+name: smcc
+description: >-
+  State Management of Compiled Context. Typed, versioned, dependency-aware
+  project state for coding agents. The smcc repository is the first
+  SMCC-managed project.
+goal_refs:
+  - GOAL-001
+created_at: "2026-09-30"

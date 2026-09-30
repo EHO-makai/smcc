@@ -1,0 +1,16 @@
+id: DEC-012
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: smcc validate is part of the early vertical slice
+statement: >-
+  smcc validate checks snapshot-establishable properties: Pydantic schema
+  validity, unique object IDs, valid object types and status values,
+  resolvable references and task dependencies, DAG acyclicity, and valid
+  context provenance structure. State-transition code, not snapshot
+  validation, enforces version increments during accepted updates.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

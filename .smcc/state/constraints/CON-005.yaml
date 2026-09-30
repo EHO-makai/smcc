@@ -1,0 +1,17 @@
+id: CON-005
+type: Constraint
+schema_version: 1
+version: 2
+status: accepted
+scope: project
+title: Agents propose; humans accept consequential state transitions
+statement: >-
+  Consequential authoritative state must not silently change because an agent
+  emitted prose or modified a file. Agent output flows through structured
+  results and proposals to explicit human accept/reject transitions. During
+  bootstrap this is a workflow convention, not a technical enforcement; do
+  not claim otherwise.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

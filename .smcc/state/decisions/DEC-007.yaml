@@ -1,0 +1,17 @@
+id: DEC-007
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: Results are persistent per-task YAML files
+statement: >-
+  Agent results are structured YAML validated by Pydantic, stored under
+  .smcc/tasks/TASK-XXX/results/RESULT-XXX.yaml. Results are persistent and
+  must not be silently overwritten by retries. A Result distinguishes work
+  performed, artifacts/files changed, tests run, test results, findings,
+  unresolved questions, proposed state changes, suggested follow-up tasks,
+  and Git provenance where available.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

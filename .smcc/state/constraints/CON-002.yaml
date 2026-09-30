@@ -1,0 +1,16 @@
+id: CON-002
+type: Constraint
+schema_version: 1
+version: 2
+status: accepted
+scope: project
+title: File-backed authoritative state; no database in v1
+statement: >-
+  Authoritative state is stored as YAML/JSON files in the repository. Do not
+  introduce a database unless a demonstrated requirement makes the file-backed
+  model untenable. State must remain transparent, human-readable, diffable,
+  and version-controllable.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

@@ -1,0 +1,33 @@
+id: TASK-001
+type: Task
+schema_version: 1
+version: 5
+status: accepted
+title: Typed state model and file persistence
+goal: >-
+  Implement Pydantic schemas for the v1 SMCC objects (Goal, Requirement,
+  Constraint, Decision, Question, Finding, Task, Result, Proposal) and
+  file-backed load/validate/save that round-trips the bootstrap fixture
+  in .smcc/.
+task_dependencies: []
+context_refs:
+  - DEC-001
+  - DEC-002
+  - DEC-009
+  - DEC-010
+constraints: []
+acceptance_criteria:
+  - Every SMCC YAML data file in .smcc/ loads and validates without error; non-SMCC files such as .gitkeep are ignored by the store rather than treated as malformed state.
+  - Objects round-trip (load then save) without semantic change.
+  - Schema violations produce actionable validation errors identifying file, field, and cause.
+  - Serialized objects carry schema_version and the common metadata fields.
+  - accepted_result is non-null exactly when a Task's status is accepted (schema invariant).
+  - No database or non-file persistence is introduced.
+assigned_agent: null
+outputs: []
+accepted_result: RESULT-001
+review_state: null
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

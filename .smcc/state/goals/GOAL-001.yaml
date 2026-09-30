@@ -1,0 +1,17 @@
+id: GOAL-001
+type: Goal
+schema_version: 1
+version: 1
+status: accepted
+title: Build the SMCC v1 vertical slice
+statement: >-
+  Build the first usable SMCC vertical slice: explicit authoritative project
+  state, a task DAG, deterministic task-specific context compilation with
+  provenance, structured agent results, state-change proposals, human
+  accept/reject transitions, and dependency-aware invalidation — all
+  file-backed, diffable, and inspectable in the repository. The smcc
+  repository manages itself with this system as it is built.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []
