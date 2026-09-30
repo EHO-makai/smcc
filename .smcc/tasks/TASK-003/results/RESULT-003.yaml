@@ -1,0 +1,59 @@
+id: RESULT-003
+type: Result
+schema_version: 1
+version: 1
+task_id: TASK-003
+created_at: "2026-09-30"
+source: agent/fable5
+summary: >-
+  Implemented the deterministic context compiler: compile_context builds the
+  explicit CON-003 selection set from a snapshot, renders a stable-ordered
+  Markdown context package with DEC-004 YAML provenance frontmatter, and
+  computes a sha256 content_hash over canonical content excluding volatile
+  fields (DEC-005). write_context stores the package content-addressed under
+  .smcc/contexts/<task-id>/<content_hash>.md. The compiler compiled its own
+  task's context, which is committed per DEC-006. 67 tests pass.
+work_performed:
+  - Implemented src/smcc/compile.py - compile_context(snapshot, task_id) resolves the CON-003 selection set (task, acceptance criteria, task-local constraints, project goal_refs, project-scoped constraints, context_refs, accepted dependency Results via accepted_result), deduped by id; CompileError on unknown task, dangling refs, non-state context_refs, or a dependency without an accepted result.
+  - Markdown rendering per ARCHITECTURE section 9.2 - stable section order, objects sorted by id within sections, empty headings omitted; dependency Results render summary, findings, and unresolved questions.
+  - Provenance frontmatter per DEC-004 - task id/version, compiler_version (0.1), sorted (id, version) state_refs, dependency (task_id, result_id) pairs, content_hash, compiled_at.
+  - content_hash per DEC-005 - sha256 over canonical YAML of the non-volatile frontmatter fields plus the body; compiled_at and content_hash excluded, so recompilation of unchanged inputs is hash-identical.
+  - write_context - content-addressed exclusive-create write; an existing file with the same hash already holds identical content, so rewrite is a no-op.
+  - Implemented smcc compile TASK-NNN CLI subcommand with --smcc-dir and upward discovery, printing the written path and content_hash; exit 0/1/2 consistent with validate.
+  - Compiled TASK-003's own context and committed it (first real compiled context, hash e23ff922...).
+files_changed:
+  - src/smcc/compile.py
+  - src/smcc/cli.py
+  - src/smcc/__init__.py
+  - tests/test_compile.py
+  - tests/test_validate.py
+  - .smcc/tasks/TASK-003/task.yaml
+  - .smcc/contexts/TASK-003/e23ff922d07acb99fcd79115a4c4283af17a15c849d33bcb6c134071bc7df389.md
+tests_run:
+  - python -m pytest -q (venv .venv, Python 3.13.14)
+  - smcc validate (live sidecar)
+  - smcc compile TASK-003 (live sidecar; produced the committed context)
+test_results:
+  - 67 passed in 11.89s; acceptance criteria covered directly (identical hash on recompile with differing compiled_at, frontmatter matches rendered consumption exactly, selection-set membership and exclusion, stable ordering, version bump changes hash with the changed input identifiable as the state_refs delta).
+  - smcc validate exits 0; smcc compile TASK-003 wrote the content-addressed context.
+findings:
+  - Content addressing by content_hash makes write idempotence trivial and collision-safe - a same-named file is by construction the same context, so no overwrite handling is needed.
+  - Retired project-scoped constraints are excluded from the always-include rule (they are no longer authoritative); an explicitly named retired object via context_refs is still included because explicit naming wins. CON-003 does not state this; flagged below.
+  - Windows forbids colons in filenames, so content_hash is bare hex with no algorithm prefix; the algorithm is fixed by compiler_version.
+  - Living-fixture lesson (fourth occurrence) - flipping TASK-003 to in_progress broke a validate drift test that relied on the live fixture's status; the test now seeds its own statuses.
+unresolved_questions:
+  - Should the always-include rule for project-scoped constraints filter by status (current behavior excludes retired, includes draft and accepted), and should CON-003 be amended to say so?
+  - Staleness detection (DEC-005) has defined semantics and identifiable inputs via state_refs, but no checker exists yet; is that a validate extension or a separate smcc command?
+proposals: []
+follow_up_tasks: []
+context_source: manual
+context_content_hash: null
+git:
+  base_commit: 71c1a30425e3d6fcf622acc1f671203f13f8af9a
+  resulting_commit: null
+  changed_files:
+    - src/smcc/**
+    - tests/**
+    - .smcc/tasks/TASK-003/**
+    - .smcc/contexts/TASK-003/**
+  diff_reference: null

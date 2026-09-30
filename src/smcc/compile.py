@@ -1,0 +1,235 @@
+"""Deterministic context compiler (TASK-003).
+
+Selection is explicit per CON-003 / ARCHITECTURE.md §9.1: the task itself, its
+acceptance criteria and task-local constraints, the project goal, project-scoped
+constraints, objects named by context_refs, and the accepted Result of each task
+dependency. Output is a Markdown context package with YAML provenance
+frontmatter (§9.3); content_hash excludes volatile fields (§9.4); compiled
+contexts are content-addressed under .smcc/contexts/ and committed (§9.5).
+"""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
+
+from smcc.errors import SMCCError
+from smcc.models import (
+    Constraint,
+    Decision,
+    Finding,
+    Goal,
+    Question,
+    Requirement,
+    Result,
+    StateObject,
+    StateStatus,
+    Task,
+)
+from smcc.store import Snapshot
+
+COMPILER_VERSION = "0.1"
+
+
+class CompileError(SMCCError):
+    """The selection set for a task cannot be resolved into a compiled context."""
+
+
+@dataclass(frozen=True)
+class CompiledContext:
+    """One compiled Markdown context package plus its provenance."""
+
+    task_id: str
+    task_version: int
+    compiler_version: str
+    # (id, version) of every authoritative state object consumed (DEC-004)
+    state_refs: tuple[tuple[str, int], ...]
+    # (dependency task_id, result_id) for each accepted dependency output
+    dependency_results: tuple[tuple[str, str], ...]
+    content_hash: str
+    compiled_at: str
+    body: str
+    document: str
+
+
+def _resolve_task(snapshot: Snapshot, task_id: str) -> Task:
+    for task in snapshot.tasks:
+        if task.id == task_id:
+            return task
+    raise CompileError(f"{task_id}: task not found")
+
+
+def _select(snapshot: Snapshot, task: Task) -> tuple[dict[str, StateObject], list[Result]]:
+    """Resolve the explicit selection set (CON-003). Deduped by object id."""
+    objects = snapshot.by_id()
+    selected: dict[str, StateObject] = {}
+
+    def include_state(ref: str, requirer: str) -> None:
+        obj = objects.get(ref)
+        if obj is None:
+            raise CompileError(f"{task.id}: {requirer} references unknown object {ref!r}")
+        if not isinstance(obj, StateObject):
+            raise CompileError(
+                f"{task.id}: {requirer} reference {ref!r} is a {obj.type}, "
+                "not an authoritative state object"
+            )
+        selected.setdefault(obj.id, obj)
+
+    # project goal(s)
+    for ref in snapshot.project.goal_refs:
+        include_state(ref, "project.yaml goal_refs")
+
+    # project-scoped constraints are always included (§9.1); retired ones are not
+    # authoritative and are excluded unless explicitly named by the task
+    for obj in snapshot.state_objects:
+        if isinstance(obj, Constraint) and obj.scope == "project":
+            if obj.status != StateStatus.retired:
+                selected.setdefault(obj.id, obj)
+
+    # task-local constraints and explicit context_refs
+    for ref in task.constraints:
+        include_state(ref, "constraints")
+    for ref in task.context_refs:
+        include_state(ref, "context_refs")
+
+    # accepted Result of each task dependency, named by accepted_result (§8.2)
+    dependency_results: list[Result] = []
+    for dep_id in sorted(task.task_dependencies):
+        dep = objects.get(dep_id)
+        if dep is None or not isinstance(dep, Task):
+            raise CompileError(f"{task.id}: task_dependencies references unknown task {dep_id!r}")
+        if dep.accepted_result is None:
+            raise CompileError(
+                f"{task.id}: dependency {dep_id} has no accepted result; cannot compile"
+            )
+        result = objects.get(dep.accepted_result)
+        if not isinstance(result, Result):
+            raise CompileError(
+                f"{task.id}: dependency {dep_id} names missing result {dep.accepted_result!r}"
+            )
+        dependency_results.append(result)
+
+    return selected, dependency_results
+
+
+# §9.2 section headings, in output order, keyed by state type
+_STATE_SECTIONS: tuple[tuple[str, type], ...] = (
+    ("Project Goal", Goal),
+    ("Relevant Requirements", Requirement),
+    ("Relevant Constraints", Constraint),
+    ("Relevant Decisions", Decision),
+    ("Known Findings", Finding),
+    ("Open Questions", Question),
+)
+
+
+def _render_body(task: Task, selected: dict[str, StateObject], results: list[Result]) -> str:
+    lines: list[str] = [f"# SMCC Context: {task.id}", ""]
+
+    lines += ["## Task", "", f"{task.id} (v{task.version}) — {task.title}", ""]
+    lines += ["## Goal", "", task.goal.strip(), ""]
+
+    if task.acceptance_criteria:
+        lines += ["## Acceptance Criteria", ""]
+        lines += [f"- {criterion}" for criterion in task.acceptance_criteria]
+        lines.append("")
+
+    for heading, state_type in _STATE_SECTIONS:
+        members = sorted(
+            (obj for obj in selected.values() if isinstance(obj, state_type)),
+            key=lambda obj: obj.id,
+        )
+        if not members:
+            continue  # empty headings are omitted (§9.2)
+        lines += [f"## {heading}", ""]
+        for obj in members:
+            lines += [f"### {obj.id} (v{obj.version}) — {obj.title}", "", obj.statement.strip(), ""]
+
+    if results:
+        lines += ["## Dependency Outputs", ""]
+        for result in results:
+            lines += [f"### {result.id} — accepted result of {result.task_id}", ""]
+            lines += [result.summary.strip(), ""]
+            if result.findings:
+                lines += ["Findings:", ""]
+                lines += [f"- {finding}" for finding in result.findings]
+                lines.append("")
+            if result.unresolved_questions:
+                lines += ["Unresolved questions:", ""]
+                lines += [f"- {question}" for question in result.unresolved_questions]
+                lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def compile_context(
+    snapshot: Snapshot, task_id: str, compiled_at: str | None = None
+) -> CompiledContext:
+    """Compile the explicit context package for one task (DEC-004, DEC-005)."""
+    task = _resolve_task(snapshot, task_id)
+    selected, results = _select(snapshot, task)
+    body = _render_body(task, selected, results)
+
+    state_refs = tuple(sorted((obj.id, obj.version) for obj in selected.values()))
+    dependency_results = tuple((result.task_id, result.id) for result in results)
+
+    # content_hash covers canonical provenance + body, excluding volatile fields
+    # (compiled_at, content_hash) per DEC-005 / §9.4
+    hash_payload = {
+        "task_id": task.id,
+        "task_version": task.version,
+        "compiler_version": COMPILER_VERSION,
+        "state_refs": [{"id": ref, "version": version} for ref, version in state_refs],
+        "dependency_results": [
+            {"task_id": dep_id, "result_id": result_id}
+            for dep_id, result_id in dependency_results
+        ],
+    }
+    canonical = yaml.safe_dump(hash_payload, sort_keys=True, allow_unicode=True) + "\n" + body
+    content_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    if compiled_at is None:
+        compiled_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+    frontmatter = dict(hash_payload)
+    frontmatter["content_hash"] = content_hash
+    frontmatter["compiled_at"] = compiled_at
+    document = (
+        "---\n"
+        + yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True, width=88)
+        + "---\n\n"
+        + body
+    )
+
+    return CompiledContext(
+        task_id=task.id,
+        task_version=task.version,
+        compiler_version=COMPILER_VERSION,
+        state_refs=state_refs,
+        dependency_results=dependency_results,
+        content_hash=content_hash,
+        compiled_at=compiled_at,
+        body=body,
+        document=document,
+    )
+
+
+def write_context(smcc_dir: Path | str, context: CompiledContext) -> Path:
+    """Write a compiled context to its content-addressed path.
+
+    Contexts are content-addressed by content_hash, so an existing file with
+    the same name already holds identical deterministic content; rewriting it
+    is a no-op by construction and the existing path is returned.
+    """
+    path = Path(smcc_dir) / "contexts" / context.task_id / f"{context.content_hash}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x", encoding="utf-8", newline="") as handle:
+            handle.write(context.document)
+    except FileExistsError:
+        pass
+    return path

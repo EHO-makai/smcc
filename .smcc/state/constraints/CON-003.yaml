@@ -1,7 +1,7 @@
 id: CON-003
 type: Constraint
 schema_version: 1
-version: 2
+version: 3
 status: accepted
 scope: project
 title: Context selection is explicit only in v1
@@ -11,7 +11,11 @@ statement: >-
   the task itself; its acceptance criteria and task-local constraints; the
   project goal; project-scoped constraints; objects named by the task's
   context_refs; and the accepted Result of each task dependency, as named
-  by that task's accepted_result field.
+  by that task's accepted_result field. Status semantics: the automatic
+  inclusion of project-scoped constraints applies only while they are
+  authoritative (retired constraints are excluded); an object explicitly
+  named by context_refs or task constraints is included regardless of its
+  status, and provenance records exactly what was consumed.
 created_at: "2026-09-30"
 updated_at: "2026-09-30"
 source: bootstrap/EHO

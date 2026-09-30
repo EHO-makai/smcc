@@ -1,5 +1,12 @@
 """SMCC - State Management of Compiled Context."""
 
+from smcc.compile import (
+    COMPILER_VERSION,
+    CompiledContext,
+    CompileError,
+    compile_context,
+    write_context,
+)
 from smcc.errors import SMCCError, SMCCFileError, SMCCValidationError
 from smcc.models import (
     SCHEMA_VERSION,
@@ -25,9 +32,12 @@ from smcc.store import Snapshot, Store
 from smcc.validate import Issue, ValidationReport, validate
 
 __all__ = [
+    "COMPILER_VERSION",
     "SCHEMA_VERSION",
     "AnySMCCObject",
     "AnyStateObject",
+    "CompileError",
+    "CompiledContext",
     "Constraint",
     "Decision",
     "Finding",
@@ -50,5 +60,7 @@ __all__ = [
     "Task",
     "TaskStatus",
     "ValidationReport",
+    "compile_context",
     "validate",
+    "write_context",
 ]
