@@ -11,6 +11,7 @@ from smcc.validate import (
     ACCEPTED_RESULT,
     DANGLING_REF,
     DEPENDENCY_CYCLE,
+    DEPENDENCY_DEPTH,
     DUPLICATE_ID,
     LOCATION,
     PROVENANCE,
@@ -73,6 +74,39 @@ class TestSeededDefects:
             task_dependencies=["TASK-002"],
         )
         assert DEPENDENCY_CYCLE in _codes(fixture_copy)
+
+    def test_dependency_chain_too_deep(self, tmp_path: Path):
+        # a chain longer than the guard reports an issue instead of RecursionError
+        sidecar = tmp_path / ".smcc"
+        tasks_dir = sidecar / "tasks"
+        chain_length = 600
+        for i in range(chain_length):
+            task_id = f"TASK-{1000 + i}"
+            deps = [f"TASK-{1000 + i + 1}"] if i < chain_length - 1 else []
+            task_dir = tasks_dir / task_id
+            task_dir.mkdir(parents=True)
+            (task_dir / "task.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "id": task_id,
+                        "type": "Task",
+                        "schema_version": 1,
+                        "version": 1,
+                        "status": "in_progress",
+                        "title": "t",
+                        "goal": "g",
+                        "task_dependencies": deps,
+                        "created_at": "2026-09-30",
+                        "updated_at": "2026-09-30",
+                        "source": "test",
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+        codes = _codes(sidecar)
+        assert DEPENDENCY_DEPTH in codes
+        assert DEPENDENCY_CYCLE not in codes
 
     def test_invalid_status(self, fixture_copy: Path):
         _edit(fixture_copy / "tasks" / "TASK-003" / "task.yaml", status="bogus")

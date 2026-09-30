@@ -35,9 +35,13 @@ LOCATION = "location"  # object of the wrong kind for the directory it sits in
 DUPLICATE_ID = "duplicate-id"  # same object id defined more than once
 DANGLING_REF = "dangling-ref"  # reference to an id that does not exist
 DEPENDENCY_CYCLE = "dependency-cycle"  # task_dependencies DAG has a cycle
+DEPENDENCY_DEPTH = "dependency-depth"  # dependency chain too deep to traverse safely
 STATUS_DEPENDENCY = "status-dependency"  # stored ready/blocked disagrees with the DAG
 ACCEPTED_RESULT = "accepted-result"  # accepted_result does not resolve to a matching Result
 PROVENANCE = "provenance"  # Result provenance structure is inconsistent
+
+# guard for recursive DFS: comfortably under CPython's default recursion limit
+_MAX_DEPENDENCY_DEPTH = 500
 
 
 @dataclass(frozen=True)
@@ -191,8 +195,21 @@ def _check_references(
 def _check_dependency_cycles(tasks: dict[str, Task], issues: list[Issue]) -> None:
     WHITE, GREY, BLACK = 0, 1, 2
     color = dict.fromkeys(tasks, WHITE)
+    depth_reported = False
 
     def visit(task_id: str, stack: list[str]) -> None:
+        nonlocal depth_reported
+        if len(stack) >= _MAX_DEPENDENCY_DEPTH:
+            if not depth_reported:
+                issues.append(
+                    Issue(
+                        DEPENDENCY_DEPTH,
+                        f"dependency chain exceeds {_MAX_DEPENDENCY_DEPTH} tasks; traversal aborted",
+                        object_id=task_id,
+                    )
+                )
+                depth_reported = True
+            return
         color[task_id] = GREY
         stack.append(task_id)
         for dep in tasks[task_id].task_dependencies:
