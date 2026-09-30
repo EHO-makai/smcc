@@ -194,11 +194,19 @@ class Store:
         is refused rather than silently overwriting it.
         """
         path = self.path_for(obj)
-        if isinstance(obj, Result) and path.exists():
-            raise SMCCFileError(
-                path, "Result files are immutable; a retry or correction must use a new Result id"
-            )
         path.parent.mkdir(parents=True, exist_ok=True)
         data = obj.model_dump(mode="json")
-        path.write_text(_dump_yaml(data), encoding="utf-8")
+        text = _dump_yaml(data)
+        if isinstance(obj, Result):
+            # exclusive create: existence check and write are one atomic step
+            try:
+                with path.open("x", encoding="utf-8", newline="") as f:
+                    f.write(text)
+            except FileExistsError:
+                raise SMCCFileError(
+                    path,
+                    "Result files are immutable; a retry or correction must use a new Result id",
+                ) from None
+        else:
+            path.write_text(text, encoding="utf-8")
         return path

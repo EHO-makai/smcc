@@ -53,6 +53,13 @@ class TestIdPrefix:
             Decision.model_validate(_state("DEC-1", "Decision"))
 
 
+class TestSchemaVersion:
+    def test_future_schema_version_rejected(self):
+        # fail fast on files written by a newer smcc rather than misparse them
+        with pytest.raises(ValidationError, match="schema_version"):
+            Decision.model_validate(_state("DEC-001", "Decision") | {"schema_version": 99})
+
+
 class TestConstraintScope:
     def test_project_scope(self):
         con = Constraint.model_validate(_state("CON-001", "Constraint") | {"scope": "project"})

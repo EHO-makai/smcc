@@ -111,6 +111,18 @@ class TestResultImmutability:
         with pytest.raises(SMCCFileError, match="immutable"):
             store.save(result)
 
+    def test_save_refuses_file_created_out_of_band(self, tmp_path: Path):
+        # exclusive create means a file appearing between check and write
+        # (e.g. a concurrent writer) still cannot be overwritten
+        store = Store(tmp_path)
+        result = self._result()
+        path = store.path_for(result)
+        path.parent.mkdir(parents=True)
+        path.write_text("written by someone else", encoding="utf-8")
+        with pytest.raises(SMCCFileError, match="immutable"):
+            store.save(result)
+        assert path.read_text(encoding="utf-8") == "written by someone else"
+
     def test_save_goal_overwrite_allowed(self, tmp_path: Path):
         # in-place versioning (DEC-001): state objects may be rewritten
         store = Store(tmp_path)

@@ -66,7 +66,9 @@ class SMCCObject(BaseModel):
 
     id: str
     type: str
-    schema_version: int = Field(ge=1)
+    # le=SCHEMA_VERSION: fail fast on files written by a newer smcc rather than
+    # misparse them; older versions will need migration dispatch when this bumps
+    schema_version: int = Field(ge=1, le=SCHEMA_VERSION)
     version: int = Field(ge=1)
     created_at: date
     updated_at: date
@@ -164,7 +166,7 @@ class Result(BaseModel):
 
     id: str
     type: Literal["Result"] = "Result"
-    schema_version: int = Field(ge=1)
+    schema_version: int = Field(ge=1, le=SCHEMA_VERSION)
     version: Literal[1] = 1
     task_id: str
     created_at: date
@@ -223,7 +225,7 @@ class ProjectConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: int = Field(ge=1)
+    schema_version: int = Field(ge=1, le=SCHEMA_VERSION)
     name: str
     description: str
     goal_refs: list[str] = Field(default_factory=list)
