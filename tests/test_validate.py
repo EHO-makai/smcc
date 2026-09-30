@@ -113,7 +113,7 @@ class TestSeededDefects:
         assert SCHEMA in _codes(fixture_copy)
 
     def test_ready_with_unsatisfied_dependency(self, fixture_copy: Path):
-        # seed the non-accepted dependency; don't rely on live fixture statuses
+        # seed both statuses; don't rely on live fixture statuses
         _edit(
             fixture_copy / "tasks" / "TASK-002" / "task.yaml",
             status="in_progress",
@@ -121,12 +121,18 @@ class TestSeededDefects:
         )
         _edit(
             fixture_copy / "tasks" / "TASK-003" / "task.yaml",
+            status="ready",
+            accepted_result=None,
             task_dependencies=["TASK-001", "TASK-002"],
         )
         assert STATUS_DEPENDENCY in _codes(fixture_copy)
 
     def test_blocked_with_all_dependencies_accepted(self, fixture_copy: Path):
-        _edit(fixture_copy / "tasks" / "TASK-003" / "task.yaml", status="blocked")
+        _edit(
+            fixture_copy / "tasks" / "TASK-003" / "task.yaml",
+            status="blocked",
+            accepted_result=None,
+        )
         assert STATUS_DEPENDENCY in _codes(fixture_copy)
 
     def test_accepted_result_unresolvable(self, fixture_copy: Path):
