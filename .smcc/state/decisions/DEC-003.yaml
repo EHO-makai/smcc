@@ -1,0 +1,15 @@
+id: DEC-003
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: Dual dependency model on tasks
+statement: >-
+  Tasks distinguish task_dependencies (DAG ordering and dependency-result
+  relationships) from context_refs (authoritative state required for the
+  task). Compiled-context provenance records the exact object and version
+  actually consumed.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

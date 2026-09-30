@@ -1,0 +1,18 @@
+id: CON-004
+type: Constraint
+schema_version: 1
+version: 2
+status: accepted
+scope: project
+title: v1 scope exclusions (deferred work)
+statement: >-
+  Do not implement in v1: multi-agent orchestration; autonomous planning;
+  model routing; remote service architecture; vector databases; policy
+  engines; production MCP integration; full UI; database-backed state;
+  distributed execution; sophisticated migration infrastructure; grouped
+  proposal transactions or partial acceptance; collision-free distributed ID
+  allocation. Build the complete state lifecycle first.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

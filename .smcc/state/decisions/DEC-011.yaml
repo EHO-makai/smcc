@@ -1,0 +1,15 @@
+id: DEC-011
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: Git integration is Level 1 provenance only
+statement: >-
+  SMCC records Git provenance (base commit, resulting commit, changed files,
+  diff reference) but Git commits are not the transactional mechanism for
+  SMCC state. A commit does not constitute task acceptance or
+  authoritative-state acceptance.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

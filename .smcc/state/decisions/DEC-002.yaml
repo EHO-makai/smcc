@@ -1,0 +1,15 @@
+id: DEC-002
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: v1 authoritative state types
+statement: >-
+  The v1 authoritative state set is Goal, Requirement, Constraint, Decision,
+  Question, Finding. Tasks, Results, Proposals, Contexts, and Artifacts are
+  SMCC objects outside the authoritative state/ hierarchy. Assumption and
+  Risk are deferred; test results live inside structured task Results.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

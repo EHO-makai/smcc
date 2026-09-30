@@ -1,0 +1,31 @@
+id: TASK-002
+type: Task
+schema_version: 1
+version: 4
+status: ready
+title: Implement smcc validate
+goal: >-
+  Implement the smcc validate command over the file-backed state store:
+  schema validity, unique IDs, valid types and statuses, resolvable
+  references and task dependencies, DAG acyclicity, and valid context
+  provenance structure.
+task_dependencies:
+  - TASK-001
+context_refs:
+  - DEC-003
+  - DEC-010
+  - DEC-012
+constraints: []
+acceptance_criteria:
+  - smcc validate passes on the current bootstrap fixture.
+  - Each invariant in DEC-012 is checked and individually reportable.
+  - Seeded defects (duplicate ID, dangling reference, dependency cycle, invalid status) are each detected in tests.
+  - Exit code distinguishes valid from invalid repository state.
+assigned_agent: null
+outputs: []
+accepted_result: null
+review_state: null
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

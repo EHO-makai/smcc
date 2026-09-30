@@ -1,0 +1,33 @@
+id: TASK-003
+type: Task
+schema_version: 1
+version: 4
+status: ready
+title: Context compiler with provenance frontmatter
+goal: >-
+  Implement the deterministic context compiler: given a task, produce a
+  Markdown context package under .smcc/contexts/ containing exactly the
+  explicit selection set, with YAML frontmatter provenance and a
+  content_hash that excludes volatile fields.
+task_dependencies:
+  - TASK-001
+context_refs:
+  - DEC-003
+  - DEC-004
+  - DEC-005
+  - DEC-006
+constraints: []
+acceptance_criteria:
+  - Compiling a task twice against unchanged inputs yields an identical content_hash.
+  - Frontmatter records (id, version) for every authoritative object consumed and the ids of accepted dependency results.
+  - The compiled body contains only the explicit selection set defined in CON-003.
+  - Content ordering is stable across runs.
+  - Changing one referenced object's version changes the hash and the changed input is identifiable from provenance.
+assigned_agent: null
+outputs: []
+accepted_result: null
+review_state: null
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

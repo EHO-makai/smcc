@@ -1,0 +1,14 @@
+id: DEC-006
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: Compiled contexts are committed to Git in v1
+statement: >-
+  Compiled contexts are retained and committed because they form the
+  inspectable record of exactly what context was supplied to an agent. May
+  be revisited after deterministic reconstruction is demonstrated reliably.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

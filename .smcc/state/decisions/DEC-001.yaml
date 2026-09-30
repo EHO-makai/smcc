@@ -1,0 +1,17 @@
+id: DEC-001
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: In-place state-object versioning with monotonic integer version
+statement: >-
+  Authoritative state objects are stored as one current file per object.
+  Updates mutate the file and increment its monotonic integer version; no
+  additional versioned state files are created. Git provides historical file
+  versions. supersedes means semantic replacement of a distinct object, not a
+  prior version of the same object; superseded status is derivable from the
+  superseding relationship.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

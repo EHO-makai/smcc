@@ -1,0 +1,53 @@
+id: RESULT-001
+type: Result
+schema_version: 1
+version: 1
+task_id: TASK-001
+created_at: "2026-09-30"
+source: agent/fable5
+summary: >-
+  Implemented the typed v1 SMCC object model (Pydantic) and the file-backed
+  store. The store loads, validates, and round-trips the repository's own
+  bootstrap fixture; 30 tests pass.
+work_performed:
+  - Created pyproject.toml (Python >=3.11, pydantic>=2.7, pyyaml, pytest; src layout).
+  - Implemented src/smcc/models.py - schemas for Goal, Requirement, Constraint, Decision, Question, Finding, Task, Result, Proposal, ProjectConfig, plus status/operation enums and a discriminated union keyed on type.
+  - Implemented src/smcc/store.py - Store with load_project/load_state_objects/load_tasks/load_results/load_proposals/load_all, canonical path mapping, YAML save with stable field order; non-SMCC files (.gitkeep) ignored.
+  - Implemented src/smcc/errors.py - SMCCFileError and SMCCValidationError carrying file path, field, and cause.
+  - Enforced schema invariants - ID prefix matches type; accepted_result non-null exactly when Task status is accepted; Constraint requires scope; Result immutable (version pinned to 1, store refuses overwrite, compiled context requires content hash); Proposal update/supersede require expected_version.
+files_changed:
+  - pyproject.toml
+  - src/smcc/__init__.py
+  - src/smcc/errors.py
+  - src/smcc/models.py
+  - src/smcc/store.py
+  - tests/conftest.py
+  - tests/test_models.py
+  - tests/test_store.py
+  - .smcc/tasks/TASK-001/task.yaml
+  - .smcc/tasks/TASK-002/task.yaml
+  - .smcc/tasks/TASK-003/task.yaml
+tests_run:
+  - python -m pytest -q (venv .venv, Python 3.13.14)
+test_results:
+  - 30 passed in 0.93s; includes full load/validate/round-trip of this repository's .smcc fixture (21 objects + project.yaml).
+findings:
+  - Pydantic's discriminated union on the type field gives exact typed parsing of heterogeneous state directories with no per-directory dispatch logic.
+  - YAML round-trips are semantically stable but not byte-identical (block-scalar style and key quoting are not preserved); the round-trip acceptance criterion is met at model equality, which is the correct level per DEC-001 since Git diffs remain readable.
+  - Result immutability (DEC-007) was enforceable almost for free at the store layer by refusing to overwrite an existing Result file.
+unresolved_questions:
+  - Task status 'blocked' vs 'ready' is stored but derivable from the DAG; TASK-002 will need a decision on whether validate flags drift between stored status and derived readiness.
+  - Timestamp granularity is date-only in the fixture; datetime may be wanted once transitions are machine-executed.
+proposals: []
+follow_up_tasks: []
+context_source: manual
+context_content_hash: null
+git:
+  base_commit: 4a731d2ec7d7fc5dd1af307b549ec693050147ca
+  resulting_commit: null
+  changed_files:
+    - pyproject.toml
+    - src/smcc/**
+    - tests/**
+    - .smcc/tasks/**
+  diff_reference: null

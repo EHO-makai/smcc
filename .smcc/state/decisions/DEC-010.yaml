@@ -1,0 +1,16 @@
+id: DEC-010
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: Readable sequential repository-local IDs
+statement: >-
+  v1 uses readable sequential IDs (GOAL-001, REQ-001, CON-001, DEC-001,
+  QUESTION-001, FINDING-001, TASK-001, RESULT-001, PROP-001). These are
+  repository-local and do not claim collision-free concurrent allocation
+  across branches. ID generation may be replaced later without changing the
+  logical object model.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []

@@ -1,0 +1,19 @@
+id: DEC-005
+type: Decision
+schema_version: 1
+version: 1
+status: accepted
+title: Deterministic compilation and content_hash semantics
+statement: >-
+  Given the same task version, referenced state-object versions, accepted
+  dependency results, compiler version, and selection rules, SMCC produces
+  the same semantic context and content_hash. Generated content uses stable
+  ordering. content_hash is computed over canonical generated content
+  excluding volatile fields (compiled_at, content_hash). A compiled context
+  is stale when any recorded input version or accepted dependency result no
+  longer matches the currently authoritative input, and the changed input
+  must be identifiable.
+created_at: "2026-09-30"
+updated_at: "2026-09-30"
+source: bootstrap/EHO
+supersedes: []
