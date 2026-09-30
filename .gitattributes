@@ -1,0 +1,2 @@
+# Compiled contexts are content-addressed; keep bytes identical across platforms
+.smcc/contexts/** text eol=lf
