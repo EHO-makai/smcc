@@ -22,6 +22,7 @@ from smcc.models import (
     TaskStatus,
 )
 from smcc.store import Snapshot, Store
+from smcc.validate import Issue, ValidationReport, validate
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -32,6 +33,7 @@ __all__ = [
     "Finding",
     "GitProvenance",
     "Goal",
+    "Issue",
     "ProjectConfig",
     "Proposal",
     "ProposalOperation",
@@ -47,4 +49,6 @@ __all__ = [
     "Store",
     "Task",
     "TaskStatus",
+    "ValidationReport",
+    "validate",
 ]
