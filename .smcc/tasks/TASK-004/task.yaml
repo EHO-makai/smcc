@@ -1,0 +1,33 @@
+id: TASK-004
+type: Task
+schema_version: 1
+version: 3
+status: review
+title: Staleness detection for compiled contexts
+goal: >-
+  Implement staleness detection per DEC-005 and ARCHITECTURE section 12.1:
+  given a compiled context's provenance frontmatter, determine whether any
+  recorded input (task version, state-object version, or dependency accepted
+  result) no longer matches the currently authoritative input, and identify
+  exactly which inputs changed.
+task_dependencies:
+  - TASK-003
+context_refs:
+  - DEC-004
+  - DEC-005
+constraints: []
+acceptance_criteria:
+  - A freshly compiled context checked against unchanged inputs is reported fresh.
+  - Bumping a recorded state object's version reports the context stale and identifies that object with its recorded and current versions.
+  - A dependency whose accepted_result no longer matches the recorded result id reports the context stale and identifies that dependency.
+  - A recorded input that no longer resolves in authoritative state reports the context stale and identifies the missing input.
+  - The CLI reports staleness for each compiled context of a task and distinguishes fresh from stale via exit code.
+assigned_agent: agent/fable5
+outputs:
+  - RESULT-004
+accepted_result: null
+review_state: awaiting human review of RESULT-004
+created_at: "2026-09-30"
+updated_at: "2026-10-01"
+source: agent/fable5
+supersedes: []

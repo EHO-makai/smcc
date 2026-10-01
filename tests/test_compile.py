@@ -8,7 +8,14 @@ import yaml
 
 from smcc import Store
 from smcc.cli import EXIT_INVALID, EXIT_VALID, main
-from smcc.compile import COMPILER_VERSION, CompileError, compile_context, write_context
+from smcc.compile import (
+    COMPILER_VERSION,
+    CompileError,
+    check_context,
+    check_task_contexts,
+    compile_context,
+    write_context,
+)
 
 
 @pytest.fixture()
@@ -184,3 +191,154 @@ class TestCLI:
     def test_compile_unknown_task_fails(self, fixture_copy: Path, capsys):
         assert main(["compile", "TASK-999", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
         assert "task not found" in capsys.readouterr().err
+
+
+def _check(smcc_dir: Path, task_id: str = "TASK-004"):
+    return check_task_contexts(smcc_dir, Store(smcc_dir).load_all(), task_id)
+
+
+class TestStaleness:
+    def test_fresh_against_unchanged_inputs(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert report.fresh
+        assert report.stale_inputs == ()
+
+    def test_bumped_state_version_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        _edit(fixture_copy / "state" / "decisions" / "DEC-005.yaml", version=2)
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert not report.fresh
+        assert ("state", "DEC-005", "v1", "v2") in [
+            (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
+        ]
+
+    def test_changed_dependency_result_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        # dependency re-accepted with a different result than the one recorded
+        _edit(
+            fixture_copy / "tasks" / "TASK-003" / "task.yaml",
+            version=8,
+            accepted_result="RESULT-005",
+        )
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        stale = {(s.kind, s.id): (s.recorded, s.current) for s in report.stale_inputs}
+        assert stale[("dependency", "TASK-003")] == ("RESULT-003", "RESULT-005")
+        # the task version drift of TASK-003 is a dependency concern, not TASK-004's own
+        assert ("task", "TASK-004") not in stale
+
+    def test_missing_input_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        (fixture_copy / "state" / "decisions" / "DEC-004.yaml").unlink()
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert ("state", "DEC-004", "v1", "missing") in [
+            (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
+        ]
+
+    def test_deleted_dependency_result_is_identified(self, fixture_copy: Path):
+        # accepted_result still names the recorded id, but the Result file is gone
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        (fixture_copy / "tasks" / "TASK-003" / "results" / "RESULT-003.yaml").unlink()
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert ("dependency", "TASK-003", "RESULT-003", "missing") in [
+            (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
+        ]
+
+    def test_own_task_version_drift_is_identified(self, fixture_copy: Path):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        # seed a version guaranteed to differ from whatever the living fixture holds
+        _edit(fixture_copy / "tasks" / "TASK-004" / "task.yaml", version=context.task_version + 1)
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert ("task", "TASK-004") in {(s.kind, s.id) for s in report.stale_inputs}
+
+    def test_live_task_003_context_is_stale_from_con_003_amendment(self, smcc_dir: Path):
+        # real dogfood case: the committed TASK-003 context recorded CON-003 v2,
+        # amended to v3 during PR #3 review; task version also moved v5 -> v7
+        reports = check_task_contexts(smcc_dir, Store(smcc_dir).load_all(), "TASK-003")
+        assert reports
+        stale_ids = {s.id for r in reports for s in r.stale_inputs}
+        assert "CON-003" in stale_ids
+
+
+def _doctored(document: str, **frontmatter_updates) -> str:
+    _, fm_text, body = document.split("---\n", 2)
+    fm = yaml.safe_load(fm_text)
+    fm.update(frontmatter_updates)
+    return f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n{body}"
+
+
+class TestMalformedFrontmatter:
+    @pytest.fixture()
+    def context_document(self, fixture_copy: Path) -> tuple:
+        return Store(fixture_copy).load_all(), _compile(fixture_copy, task_id="TASK-004").document
+
+    def test_null_state_refs_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="state_refs"):
+            check_context(snapshot, _doctored(document, state_refs=None))
+
+    def test_non_mapping_state_ref_entry_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="state_refs entries"):
+            check_context(snapshot, _doctored(document, state_refs=["DEC-004"]))
+
+    def test_state_ref_missing_version_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="state_refs entries"):
+            check_context(snapshot, _doctored(document, state_refs=[{"id": "DEC-004"}]))
+
+    def test_malformed_dependency_entry_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="dependency_results entries"):
+            check_context(snapshot, _doctored(document, dependency_results=[{"task_id": "TASK-003"}]))
+
+    def test_missing_task_version_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="task_version"):
+            check_context(snapshot, _doctored(document, task_version=None))
+
+    def test_error_is_path_qualified(self, fixture_copy: Path, context_document):
+        snapshot, document = context_document
+        bad = fixture_copy / "contexts" / "TASK-004" / "bad.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text(_doctored(document, state_refs=None), encoding="utf-8")
+        with pytest.raises(CompileError, match="bad.md"):
+            check_task_contexts(fixture_copy, snapshot, "TASK-004")
+
+    def test_cli_reports_malformed_context_as_error(self, fixture_copy: Path, capsys):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        bad = fixture_copy / "contexts" / "TASK-004" / "bad.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text(_doctored(context.document, state_refs=None), encoding="utf-8")
+        assert main(["stale", "TASK-004", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
+        assert "state_refs" in capsys.readouterr().err
+
+
+class TestStaleCLI:
+    def test_fresh_context_exits_zero(self, fixture_copy: Path, capsys):
+        write_context(fixture_copy, _compile(fixture_copy, task_id="TASK-004"))
+        assert main(["stale", "TASK-004", "--smcc-dir", str(fixture_copy)]) == EXIT_VALID
+        assert ": fresh" in capsys.readouterr().out
+
+    def test_all_stale_exits_one_and_names_inputs(self, fixture_copy: Path, capsys):
+        write_context(fixture_copy, _compile(fixture_copy, task_id="TASK-004"))
+        _edit(fixture_copy / "state" / "decisions" / "DEC-005.yaml", version=2)
+        assert main(["stale", "TASK-004", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
+        out = capsys.readouterr().out
+        assert ": stale" in out
+        assert "DEC-005: recorded v1, current v2" in out
+
+    def test_no_compiled_contexts_exits_one(self, fixture_copy: Path, capsys):
+        assert main(["stale", "TASK-001", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
+        assert "no compiled contexts" in capsys.readouterr().err

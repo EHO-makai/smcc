@@ -28,14 +28,17 @@ class TestFixtureLoads:
 
     def test_tasks_load(self, store: Store):
         tasks = store.load_tasks()
-        assert [t.id for t in tasks] == ["TASK-001", "TASK-002", "TASK-003"]
+        ids = [t.id for t in tasks]
+        assert ids == sorted(ids)  # stable ordering
+        # known bootstrap tasks; the fixture may grow but never lose these
+        assert {"TASK-001", "TASK-002", "TASK-003"} <= set(ids)
         by_id = {t.id: t for t in tasks}
         assert by_id["TASK-002"].task_dependencies == ["TASK-001"]
         assert by_id["TASK-003"].task_dependencies == ["TASK-001"]
 
     def test_constraints_are_project_scoped(self, store: Store):
         constraints = [o for o in store.load_state_objects() if isinstance(o, Constraint)]
-        assert len(constraints) == 5
+        assert len(constraints) >= 5
         assert all(c.scope == "project" for c in constraints)
 
     def test_gitkeep_and_non_yaml_ignored(self, store: Store):

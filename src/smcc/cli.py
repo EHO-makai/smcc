@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from smcc.compile import compile_context, write_context
+from smcc.compile import check_task_contexts, compile_context, write_context
 from smcc.errors import SMCCError
 from smcc.store import Store
 from smcc.validate import validate
@@ -49,11 +49,24 @@ def main(argv: list[str] | None = None) -> int:
         help="sidecar directory (default: nearest .smcc walking up from cwd)",
     )
 
+    stale_parser = subparsers.add_parser(
+        "stale", help="check a task's compiled contexts for staleness (DEC-005)"
+    )
+    stale_parser.add_argument("task_id", help="task whose compiled contexts to check")
+    stale_parser.add_argument(
+        "--smcc-dir",
+        type=Path,
+        default=None,
+        help="sidecar directory (default: nearest .smcc walking up from cwd)",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "validate":
         return _cmd_validate(args.smcc_dir)
     if args.command == "compile":
         return _cmd_compile(args.smcc_dir, args.task_id)
+    if args.command == "stale":
+        return _cmd_stale(args.smcc_dir, args.task_id)
     return EXIT_USAGE  # pragma: no cover - argparse enforces the subcommand
 
 
@@ -91,6 +104,34 @@ def _cmd_compile(smcc_dir: Path | None, task_id: str) -> int:
     print(path)
     print(f"content_hash: {context.content_hash}")
     return EXIT_VALID
+
+
+def _cmd_stale(smcc_dir: Path | None, task_id: str) -> int:
+    if smcc_dir is None:
+        smcc_dir = _discover_smcc_dir(Path.cwd())
+        if smcc_dir is None:
+            print("error: no .smcc directory found from cwd upward", file=sys.stderr)
+            return EXIT_USAGE
+
+    try:
+        snapshot = Store(smcc_dir).load_all()
+        reports = check_task_contexts(smcc_dir, snapshot, task_id)
+    except SMCCError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INVALID
+    if not reports:
+        print(f"{task_id}: no compiled contexts", file=sys.stderr)
+        return EXIT_INVALID
+
+    for report in reports:
+        if report.fresh:
+            print(f"{report.path}: fresh")
+        else:
+            print(f"{report.path}: stale")
+            for stale_input in report.stale_inputs:
+                print(f"  {stale_input.render()}")
+    # exit 0 only if the task has at least one fresh compiled context
+    return EXIT_VALID if any(report.fresh for report in reports) else EXIT_INVALID
 
 
 if __name__ == "__main__":  # pragma: no cover

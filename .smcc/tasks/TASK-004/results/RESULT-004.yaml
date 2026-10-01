@@ -1,0 +1,62 @@
+id: RESULT-004
+type: Result
+schema_version: 1
+version: 1
+task_id: TASK-004
+created_at: "2026-10-01"
+source: agent/fable5
+summary: >-
+  Implemented staleness detection per DEC-005: check_context parses a compiled
+  context's DEC-004 provenance frontmatter and compares every recorded input
+  (task version, state-object versions, dependency accepted results) against
+  the current authoritative snapshot, reporting each changed input with its
+  recorded and current values. check_task_contexts checks all stored contexts
+  for a task; the smcc stale CLI subcommand reports fresh/stale per context
+  and exits 0 only when at least one fresh context exists. The checker was
+  run against the live sidecar and correctly identified the committed
+  TASK-003 context as stale from the real CON-003 v2->v3 amendment and
+  TASK-003 v5->v7 acceptance. 76 tests pass. This is the first task executed
+  against an SMCC-compiled context (context_source: compiled).
+work_performed:
+  - Implemented StaleInput (kind task|state|dependency, id, recorded, current) and StalenessReport (path, task_id, content_hash, stale_inputs, fresh property) frozen dataclasses in src/smcc/compile.py.
+  - check_context(snapshot, document, path) parses provenance frontmatter and flags - own-task version drift, state_refs version drift, state_refs entries that no longer resolve (reported as missing), dependency accepted_result mismatch (a cleared accepted_result reports current as none; a missing dependency task as missing). Malformed or missing frontmatter raises CompileError.
+  - check_task_contexts(smcc_dir, snapshot, task_id) checks every .smcc/contexts/<task-id>/*.md in stable sorted order.
+  - 'Implemented smcc stale TASK-NNN CLI subcommand with --smcc-dir and upward discovery; prints "<path>: fresh" or "<path>: stale" plus one indented line per stale input ("ID: recorded vN, current vM"); exit 0 if at least one context is fresh, 1 if all stale or none exist, 2 on usage errors - consistent with validate and compile.'
+  - Exported StaleInput, StalenessReport, check_context, check_task_contexts from the smcc package.
+  - Compiled TASK-004's own context (cc4ef3a1...) before implementation and worked from it - first SMCC-compiled context driving an SMCC task (section 5 bootstrap progression).
+files_changed:
+  - src/smcc/compile.py
+  - src/smcc/cli.py
+  - src/smcc/__init__.py
+  - tests/test_compile.py
+  - tests/test_store.py
+  - .smcc/tasks/TASK-004/task.yaml
+  - .smcc/contexts/TASK-004/cc4ef3a160a093c020ce193da39b38b7d806bc7a73a7e54ad970f781fc4d8cf9.md
+tests_run:
+  - python -m pytest -q (venv .venv, Python 3.13.14)
+  - smcc validate (live sidecar)
+  - smcc stale TASK-003 and smcc stale TASK-004 (live sidecar)
+test_results:
+  - 76 passed in 15.75s; acceptance criteria covered directly (fresh on unchanged inputs; bumped state version identified with recorded and current versions; changed dependency accepted_result identified; deleted input reported missing; own-task version drift identified; CLI exit 0 fresh / 1 stale or no contexts with named inputs in output). One live-fixture test asserts the committed TASK-003 context is stale due to CON-003 drift.
+  - smcc stale TASK-003 exits 1 reporting "TASK-003 recorded v5, current v7" and "CON-003 recorded v2, current v3" - a genuine staleness case produced by the PR #3 review amendment, not a synthetic fixture.
+  - smcc stale TASK-004 exits 0 reporting the freshly compiled context as fresh; smcc validate exits 0.
+findings:
+  - The committed TASK-003 context being genuinely stale (CON-003 amended during its own PR review) gave the checker a real-world test case on day one; committed contexts per DEC-006 create exactly the audit trail staleness detection needs.
+  - Dependency staleness compares only the recorded result id against the dependency's current accepted_result; the dependency task's own version drift is deliberately not reported for the consuming context, since DEC-005 makes the accepted Result the consumed input, not the dependency task object.
+  - Living-fixture lessons (sixth and seventh occurrences) - adding TASK-004 to the live sidecar broke a store test asserting an exact task id list and an exact constraint count; census assertions over the living fixture must be growth-tolerant (supersets and minimums, never exact).
+  - Staleness is a read-only query, so it fits a separate smcc stale command rather than a validate extension - validate checks snapshot invariants, stale compares an artifact against the snapshot. This resolves RESULT-003's second unresolved question.
+unresolved_questions:
+  - smcc stale exits 0 when at least one context for the task is fresh; should a future recompile-on-stale workflow instead key off the newest context only?
+proposals: []
+follow_up_tasks: []
+context_source: compiled
+context_content_hash: cc4ef3a160a093c020ce193da39b38b7d806bc7a73a7e54ad970f781fc4d8cf9
+git:
+  base_commit: 177d3147f1f14eac8a029ba9fce19ee5bd68a01d
+  resulting_commit: null
+  changed_files:
+    - src/smcc/**
+    - tests/**
+    - .smcc/tasks/TASK-004/**
+    - .smcc/contexts/TASK-004/**
+  diff_reference: null
