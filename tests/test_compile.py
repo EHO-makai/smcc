@@ -11,6 +11,7 @@ from smcc.cli import EXIT_INVALID, EXIT_VALID, main
 from smcc.compile import (
     COMPILER_VERSION,
     CompileError,
+    check_context,
     check_task_contexts,
     compile_context,
     write_context,
@@ -241,6 +242,17 @@ class TestStaleness:
             (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
         ]
 
+    def test_deleted_dependency_result_is_identified(self, fixture_copy: Path):
+        # accepted_result still names the recorded id, but the Result file is gone
+        context = _compile(fixture_copy, task_id="TASK-004")
+        write_context(fixture_copy, context)
+        (fixture_copy / "tasks" / "TASK-003" / "results" / "RESULT-003.yaml").unlink()
+
+        report = next(r for r in _check(fixture_copy) if r.content_hash == context.content_hash)
+        assert ("dependency", "TASK-003", "RESULT-003", "missing") in [
+            (s.kind, s.id, s.recorded, s.current) for s in report.stale_inputs
+        ]
+
     def test_own_task_version_drift_is_identified(self, fixture_copy: Path):
         context = _compile(fixture_copy, task_id="TASK-004")
         write_context(fixture_copy, context)
@@ -257,6 +269,60 @@ class TestStaleness:
         assert reports
         stale_ids = {s.id for r in reports for s in r.stale_inputs}
         assert "CON-003" in stale_ids
+
+
+def _doctored(document: str, **frontmatter_updates) -> str:
+    _, fm_text, body = document.split("---\n", 2)
+    fm = yaml.safe_load(fm_text)
+    fm.update(frontmatter_updates)
+    return f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n{body}"
+
+
+class TestMalformedFrontmatter:
+    @pytest.fixture()
+    def context_document(self, fixture_copy: Path) -> tuple:
+        return Store(fixture_copy).load_all(), _compile(fixture_copy, task_id="TASK-004").document
+
+    def test_null_state_refs_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="state_refs"):
+            check_context(snapshot, _doctored(document, state_refs=None))
+
+    def test_non_mapping_state_ref_entry_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="state_refs entries"):
+            check_context(snapshot, _doctored(document, state_refs=["DEC-004"]))
+
+    def test_state_ref_missing_version_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="state_refs entries"):
+            check_context(snapshot, _doctored(document, state_refs=[{"id": "DEC-004"}]))
+
+    def test_malformed_dependency_entry_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="dependency_results entries"):
+            check_context(snapshot, _doctored(document, dependency_results=[{"task_id": "TASK-003"}]))
+
+    def test_missing_task_version_raises_compile_error(self, context_document):
+        snapshot, document = context_document
+        with pytest.raises(CompileError, match="task_version"):
+            check_context(snapshot, _doctored(document, task_version=None))
+
+    def test_error_is_path_qualified(self, fixture_copy: Path, context_document):
+        snapshot, document = context_document
+        bad = fixture_copy / "contexts" / "TASK-004" / "bad.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text(_doctored(document, state_refs=None), encoding="utf-8")
+        with pytest.raises(CompileError, match="bad.md"):
+            check_task_contexts(fixture_copy, snapshot, "TASK-004")
+
+    def test_cli_reports_malformed_context_as_error(self, fixture_copy: Path, capsys):
+        context = _compile(fixture_copy, task_id="TASK-004")
+        bad = fixture_copy / "contexts" / "TASK-004" / "bad.md"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_text(_doctored(context.document, state_refs=None), encoding="utf-8")
+        assert main(["stale", "TASK-004", "--smcc-dir", str(fixture_copy)]) == EXIT_INVALID
+        assert "state_refs" in capsys.readouterr().err
 
 
 class TestStaleCLI:

@@ -267,6 +267,45 @@ class StalenessReport:
         return not self.stale_inputs
 
 
+def _parse_frontmatter(document: str, path: Path | None) -> dict:
+    """Parse and structurally validate provenance frontmatter (DEC-004 shape)."""
+    where = path or "<document>"
+    parts = document.split("---\n", 2)
+    if len(parts) != 3 or parts[0].strip():
+        raise CompileError(f"{where}: missing provenance frontmatter")
+    try:
+        frontmatter = yaml.safe_load(parts[1])
+    except yaml.YAMLError as exc:
+        raise CompileError(f"{where}: invalid frontmatter YAML: {exc}") from exc
+    if not isinstance(frontmatter, dict):
+        raise CompileError(f"{where}: frontmatter is not a mapping")
+
+    for field_name, field_type in (
+        ("task_id", str),
+        ("task_version", int),
+        ("content_hash", str),
+        ("state_refs", list),
+        ("dependency_results", list),
+    ):
+        if not isinstance(frontmatter.get(field_name), field_type):
+            raise CompileError(
+                f"{where}: frontmatter field '{field_name}' missing or not {field_type.__name__}"
+            )
+    for ref in frontmatter["state_refs"]:
+        if not (isinstance(ref, dict) and isinstance(ref.get("id"), str) and isinstance(ref.get("version"), int)):
+            raise CompileError(f"{where}: state_refs entries must be mappings with id and version")
+    for dep_ref in frontmatter["dependency_results"]:
+        if not (
+            isinstance(dep_ref, dict)
+            and isinstance(dep_ref.get("task_id"), str)
+            and isinstance(dep_ref.get("result_id"), str)
+        ):
+            raise CompileError(
+                f"{where}: dependency_results entries must be mappings with task_id and result_id"
+            )
+    return frontmatter
+
+
 def check_context(snapshot: Snapshot, document: str, path: Path | None = None) -> StalenessReport:
     """Check one compiled context document's recorded inputs against the snapshot.
 
@@ -274,23 +313,9 @@ def check_context(snapshot: Snapshot, document: str, path: Path | None = None) -
     result no longer matches the currently authoritative input (DEC-005); every
     changed input is reported individually so the cause is identifiable.
     """
-    parts = document.split("---\n", 2)
-    if len(parts) != 3 or parts[0].strip():
-        raise CompileError(f"{path or '<document>'}: missing provenance frontmatter")
-    try:
-        frontmatter = yaml.safe_load(parts[1])
-    except yaml.YAMLError as exc:
-        raise CompileError(f"{path or '<document>'}: invalid frontmatter YAML: {exc}") from exc
-    if not isinstance(frontmatter, dict):
-        raise CompileError(f"{path or '<document>'}: frontmatter is not a mapping")
-    try:
-        task_id = frontmatter["task_id"]
-        task_version = frontmatter["task_version"]
-        state_refs = frontmatter["state_refs"]
-        dependency_results = frontmatter["dependency_results"]
-        content_hash = frontmatter["content_hash"]
-    except KeyError as exc:
-        raise CompileError(f"{path or '<document>'}: frontmatter missing field {exc}") from exc
+    frontmatter = _parse_frontmatter(document, path)
+    task_id = frontmatter["task_id"]
+    task_version = frontmatter["task_version"]
 
     objects = snapshot.by_id()
     stale: list[StaleInput] = []
@@ -301,26 +326,29 @@ def check_context(snapshot: Snapshot, document: str, path: Path | None = None) -
     elif task.version != task_version:
         stale.append(StaleInput("task", task_id, f"v{task_version}", f"v{task.version}"))
 
-    for ref in state_refs:
+    for ref in frontmatter["state_refs"]:
         obj = objects.get(ref["id"])
         if obj is None or not isinstance(obj, StateObject):
             stale.append(StaleInput("state", ref["id"], f"v{ref['version']}", "missing"))
         elif obj.version != ref["version"]:
             stale.append(StaleInput("state", ref["id"], f"v{ref['version']}", f"v{obj.version}"))
 
-    for dep_ref in dependency_results:
-        dep = objects.get(dep_ref["task_id"])
+    for dep_ref in frontmatter["dependency_results"]:
+        dep_task_id = dep_ref["task_id"]
         recorded = dep_ref["result_id"]
+        dep = objects.get(dep_task_id)
+        result = objects.get(recorded)
         if not isinstance(dep, Task):
-            stale.append(StaleInput("dependency", dep_ref["task_id"], recorded, "missing"))
+            stale.append(StaleInput("dependency", dep_task_id, recorded, "missing"))
         elif dep.accepted_result != recorded:
-            stale.append(
-                StaleInput("dependency", dep_ref["task_id"], recorded, dep.accepted_result or "none")
-            )
+            stale.append(StaleInput("dependency", dep_task_id, recorded, dep.accepted_result or "none"))
+        elif not isinstance(result, Result) or result.task_id != dep_task_id:
+            # accepted_result still names the recorded id, but the Result itself is gone
+            stale.append(StaleInput("dependency", dep_task_id, recorded, "missing"))
 
     return StalenessReport(
         task_id=task_id,
-        content_hash=content_hash,
+        content_hash=frontmatter["content_hash"],
         stale_inputs=tuple(stale),
         path=path,
     )
