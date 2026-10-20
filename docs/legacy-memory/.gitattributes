@@ -1,0 +1,3 @@
+# Recovered legacy memory: preserve bytes exactly (no EOL normalization).
+*.md -text
+INDEX.md text
